@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>LBM Audio-Visualizer</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f4f8; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .stats { display: flex; gap: 20px; font-size: 1.2em; font-weight: bold; }
+        .stats span { color: #007bff; }
+        .screen-container { width: 100%; height: 300px; background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-bottom: 20px; text-align: center; }
+        img#sim-frame { width: 100%; height: 100%; object-fit: contain; }
+        .controls { display: flex; gap: 20px; align-items: center; background: #f8f9fa; padding: 15px; border-radius: 8px; }
+        .control-group { display: flex; align-items: center; gap: 10px; }
+        input[type="range"] { cursor: pointer; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button.active { background: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>カルマン渦と流体音シミュレータ (Python LBM)</h2>
+            <div class="stats">
+                <div>推定周波数: <span id="freq-val">0.0</span> Hz</div>
+                <div>ステップ: <span id="step-val">0</span></div>
+            </div>
+        </div>
+
+        <div class="screen-container">
+            <img id="sim-frame" src="" alt="Waiting for simulation data...">
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>風速 (U_IN):</label>
+                <input type="range" id="wind-slider" min="0.01" max="0.15" step="0.01" value="0.05">
+                <span id="wind-display">0.05</span>
+            </div>
+            <div class="control-group">
+                <label>柱の太さ (R):</label>
+                <input type="range" id="size-slider" min="5" max="25" step="1" value="10">
+                <span id="size-display">10</span>
+            </div>
+            <button id="audio-btn">音を鳴らす (OFF)</button>
+        </div>
+    </div>
+
+    <script>
+        const ws = new WebSocket("ws://localhost:8000/ws");
+        const simFrame = document.getElementById('sim-frame');
+        const freqVal = document.getElementById('freq-val');
+        const stepVal = document.getElementById('step-val');
+        const audioBtn = document.getElementById('audio-btn');
+        
+        // UIイベントの送信
+        document.getElementById('wind-slider').addEventListener('input', (e) => {
+            document.getElementById('wind-display').innerText = e.target.value;
+            ws.send(JSON.stringify({ type: 'update', u_in: parseFloat(e.target.value) }));
+        });
+        document.getElementById('size-slider').addEventListener('input', (e) => {
+            document.getElementById('size-display').innerText = e.target.value;
+            ws.send(JSON.stringify({ type: 'update', radius: parseInt(e.target.value) }));
+        });
+
+        // Web Audio APIの準備
+        let audioCtx, oscillator, gainNode;
+        let isPlaying = false;
+
+        audioBtn.addEventListener('click', () => {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                oscillator = audioCtx.createOscillator();
+                gainNode = audioCtx.createGain();
+                oscillator.type = 'sine';
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                oscillator.start();
+            }
+            isPlaying = !isPlaying;
+            audioBtn.innerText = isPlaying ? "音を鳴らす (ON)" : "音を鳴らす (OFF)";
+            audioBtn.className = isPlaying ? "active" : "";
+            gainNode.gain.value = isPlaying ? 0.3 : 0; // 音量切り替え
+        });
+
+        // Pythonからのデータ受信
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            simFrame.src = "data:image/jpeg;base64," + data.image;
+            
+            // 周波数のスケーリング (LBMの数値を仮に現実のHzに拡大表示)
+            const displayFreq = (data.freq * 10000).toFixed(1); 
+            freqVal.innerText = displayFreq;
+            stepVal.innerText = data.step;
+
+            // 音声がONなら周波数をリアルタイムに更新
+            if (isPlaying && oscillator) {
+                // 人間に聞こえやすいように100〜1000Hzの範囲に調整
+                const safeFreq = Math.min(Math.max(displayFreq, 50), 2000);
+                // 滑らかにピッチを変更
+                oscillator.frequency.setTargetAtTime(safeFreq, audioCtx.currentTime, 0.1);
+            }
+        };
+    </script>
+</body>
+</html>
