@@ -17,15 +17,15 @@
     * ストローハル効果の計算結果に基づく、`Web Audio API` を用いた動的な環境音の合成。
 
 ## 3. ディレクトリ構成 (Directory Structure)
-computational_wind_chime/
- ├── config.py         # シミュレーションの解像度や物理パラメータ(Re数など)の一元管理
- ├── geometry.py       # 空間の定義と障害物（円柱）の配置マスク生成
- ├── lbm_core.py       # Numbaで高速化されたD2Q9モデルのLBM衝突・伝播処理コア
- ├── acoustics.py      # ストローハル効果に基づく発生周波数の推論モジュール
- ├── app.py            # FastAPIベースのWebサーバー（WebSocket通信・画像エンコード）
- ├── index.html        # ブラウザ表示用のフロントエンド（UI・音響合成）
- ├── requirements.txt  # Python依存パッケージリスト
- └── README.md         # 本ドキュメント
+computational_wind_chime<br>
+ ├── config.py         # シミュレーションの解像度や物理パラメータ(Re数など)の一元管理<br>
+ ├── geometry.py       # 空間の定義と障害物（円柱）の配置マスク生成<br>
+ ├── lbm_core.py       # Numbaで高速化されたD2Q9モデルのLBM衝突・伝播処理コア<br>
+ ├── acoustics.py      # ストローハル効果に基づく発生周波数の推論モジュール<br>
+ ├── app.py            # FastAPIベースのWebサーバー（WebSocket通信・画像エンコード）<br>
+ ├── index.html        # ブラウザ表示用のフロントエンド（UI・音響合成）<br>
+ ├── requirements.txt  # Python依存パッケージリスト<br>
+ └── README.md         # 本ドキュメント<br>
 
 ## 4. プロジェクト・ロードマップ (Phases)
 
@@ -46,12 +46,12 @@ computational_wind_chime/
 ### 5.1 依存パッケージのインストール
 Pythonの仮想環境を作成し、必要なライブラリをインストールします。
 
-python -m venv venv
+python -m venv C3
 
 # Windowsの場合:
-.\venv\Scripts\activate
+.\C3\Scripts\activate
 # Mac/Linuxの場合:
-source venv/bin/activate
+source C3/bin/activate
 
 # 依存パッケージのインストール
 pip install -r requirements.txt
