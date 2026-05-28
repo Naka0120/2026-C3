@@ -10,8 +10,9 @@ import uvicorn
 import config
 from geometry import create_cylinder_mask
 from lbm_core import init_simulation, lbm_step
-from acoustics import calc_strouhal_frequency
+from acoustics import calc_aeolian_resonance
 
+# エラーの原因だった「FastAPIアプリケーションの初期化」
 app = FastAPI()
 
 # HTMLファイルを読み込んで返すエンドポイント
@@ -34,35 +35,30 @@ def generate_frame_base64(u, mask):
     color_img = cv2.applyColorMap(img_8u, cv2.COLORMAP_JET)
     color_img[mask] = [0, 0, 0]
     
-    # 拡大してJPEGエンコード
     resized = cv2.resize(color_img, (config.NX * 2, config.NY * 2), interpolation=cv2.INTER_NEAREST)
     _, buffer = cv2.imencode('.jpg', resized)
     return base64.b64encode(buffer).decode('utf-8')
 
-# WebSocket通信のエンドポイント
+# WebSocket通信のエンドポイント（エオリアンハープ版）
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     
-    # シミュレーションの初期化
     mask = create_cylinder_mask()
     f = init_simulation()
     step = 0
+    base_freq = 110.0  # 基本周波数の初期値
     
-    # パラメータ更新を受け取る非同期タスク
     async def receive_updates():
-        nonlocal mask, f
+        nonlocal mask, f, base_freq
         try:
             while True:
                 data = await websocket.receive_json()
                 if data.get("type") == "update":
-                    if "u_in" in data:
-                        config.U_IN = float(data["u_in"])
-                    if "radius" in data:
-                        config.CYLINDER_R = int(data["radius"])
-                    # パラメータが変わったらマスクと流速を再設定
+                    if "u_in" in data: config.U_IN = float(data["u_in"])
+                    if "radius" in data: config.CYLINDER_R = int(data["radius"])
+                    if "base_freq" in data: base_freq = float(data["base_freq"])
                     mask = create_cylinder_mask()
-                    # 完全にリセットせず、今の分布(f)を維持したまま進行させることも可能
         except WebSocketDisconnect:
             pass
 
@@ -70,7 +66,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
     try:
         while True:
-            # 1回の送信につき、シミュレーションを数ステップ進めて高速化
             for _ in range(5):
                 f, rho, u = lbm_step(f, mask)
                 step += 1
@@ -80,18 +75,19 @@ async def websocket_endpoint(websocket: WebSocket):
             cylinder_diameter = config.CYLINDER_R * 2.0
             
             local_v = np.sqrt(u[0, probe_y, probe_x]**2 + u[1, probe_y, probe_x]**2)
-            freq = calc_strouhal_frequency(local_v, cylinder_diameter)
+            
+            # エオリアンハープのロックイン現象を計算
+            freq, harmonic, raw_fs = calc_aeolian_resonance(local_v, cylinder_diameter, base_freq)
 
             img_base64 = generate_frame_base64(u, mask)
 
-            # ブラウザへJSONデータを送信
             await websocket.send_json({
                 "step": step,
                 "freq": freq,
+                "harmonic": harmonic,
+                "raw_fs": raw_fs,
                 "image": img_base64
             })
-            
-            # CPUを占有しすぎないよう微小なスリープ
             await asyncio.sleep(0.01)
             
     except WebSocketDisconnect:
