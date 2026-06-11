@@ -1,64 +1,92 @@
 # app.py
 import asyncio
-import cv2
+
 import numpy as np
 import base64
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 import config
-from geometry import create_cylinder_mask
+from geometry import create_pipe_mask
 from lbm_core import init_simulation, lbm_step
-from acoustics import calc_aeolian_resonance
+from acoustics import calc_pipe_resonance, is_blowing_hard_enough
 
 # エラーの原因だった「FastAPIアプリケーションの初期化」
 app = FastAPI()
 
+# 静的ファイルの配信設定
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # HTMLファイルを読み込んで返すエンドポイント
 @app.get("/")
 async def get():
-    with open("index.html", "r", encoding="utf-8") as f:
+    with open("static/index.html", "r", encoding="utf-8") as f:
         html_content = f.read()
     return HTMLResponse(html_content)
 
+# フロントエンドに設定範囲を渡すためのAPI
+@app.get("/api/config")
+async def get_config():
+    return {
+        "WIND_MS_RANGE": config.WIND_MS_RANGE,
+        "PIPE_WIDTH_RANGE": config.PIPE_WIDTH_RANGE,
+        "PIPE_DEPTH_RANGE": config.PIPE_DEPTH_RANGE,
+        "PIPE_WIDTH": config.BASE_PIPE_WIDTH,
+        "PIPE_DEPTH": config.BASE_PIPE_DEPTH,
+        "WIND_MS": config.U_IN * config.LBM_TO_MS,
+        "CHORD_MODE": config.CHORD_MODE
+    }
+
 # LBMの画像を生成しBase64に変換する関数
-def generate_frame_base64(u, mask):
-    dv_dx = np.roll(u[1], -1, axis=1) - np.roll(u[1], 1, axis=1)
-    du_dy = np.roll(u[0], -1, axis=0) - np.roll(u[0], 1, axis=0)
-    vorticity = dv_dx - du_dy
-    vorticity[mask] = 0.0
+def generate_vector_field_base64(u):
+    """速度ベクトル場 u (形状: 2, NY, NX) を Float32 のバイナリデータとしてBase64エンコードする"""
+    u_bytes = u.astype(np.float32).tobytes()
+    return base64.b64encode(u_bytes).decode('ascii')
 
-    v_min, v_max = -0.05, 0.05
-    norm_vort = np.clip((vorticity - v_min) / (v_max - v_min), 0, 1)
-    img_8u = (norm_vort * 255).astype(np.uint8)
-    color_img = cv2.applyColorMap(img_8u, cv2.COLORMAP_JET)
-    color_img[mask] = [0, 0, 0]
-    
-    resized = cv2.resize(color_img, (config.NX * 2, config.NY * 2), interpolation=cv2.INTER_NEAREST)
-    _, buffer = cv2.imencode('.jpg', resized)
-    return base64.b64encode(buffer).decode('utf-8')
-
-# WebSocket通信のエンドポイント（エオリアンハープ版）
+# WebSocket通信のエンドポイント（パイプオルガン版）
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     
-    mask = create_cylinder_mask()
+    mask = create_pipe_mask()
     f = init_simulation()
     step = 0
-    base_freq = 110.0  # 基本周波数の初期値
     
     async def receive_updates():
-        nonlocal mask, f, base_freq
+        nonlocal mask, f
         try:
             while True:
                 data = await websocket.receive_json()
                 if data.get("type") == "update":
-                    if "u_in" in data: config.U_IN = float(data["u_in"])
-                    if "radius" in data: config.CYLINDER_R = int(data["radius"])
-                    if "base_freq" in data: base_freq = float(data["base_freq"])
-                    mask = create_cylinder_mask()
+                    if "chord_mode" in data:
+                        config.CHORD_MODE = bool(data["chord_mode"])
+                    if "u_in" in data: 
+                        config.U_IN = float(data["u_in"])
+                    if "pipe_width" in data: 
+                        w = int(data["pipe_width"] / 10.0)
+                        config.BASE_PIPE_WIDTH = min(config.PIPE_WIDTH_RANGE[1], max(config.PIPE_WIDTH_RANGE[0], w))
+                    if "pipe_depth" in data: 
+                        d = int(data["pipe_depth"] / 10.0)
+                        config.BASE_PIPE_DEPTH = min(config.PIPE_DEPTH_RANGE[1], max(config.PIPE_DEPTH_RANGE[0], d))
+                        
+                    # パイプ配列の再計算
+                    config.PIPES = []
+                    if config.CHORD_MODE:
+                        for i, ratio in enumerate(config.CHORD_RATIOS):
+                            pw = max(5, int(config.BASE_PIPE_WIDTH * ratio)) # 太さも連動させる
+                            pd = max(10, int(config.BASE_PIPE_DEPTH * ratio))
+                            px = config.BASE_PIPE_X + i * (pw + config.PIPE_SPACING)
+                            config.PIPES.append({'x': px, 'width': pw, 'depth': pd})
+                    else:
+                        config.PIPES.append({
+                            'x': config.BASE_PIPE_X, 
+                            'width': config.BASE_PIPE_WIDTH, 
+                            'depth': config.BASE_PIPE_DEPTH
+                        })
+
+                    mask = create_pipe_mask()
         except WebSocketDisconnect:
             pass
 
@@ -70,23 +98,40 @@ async def websocket_endpoint(websocket: WebSocket):
                 f, rho, u = lbm_step(f, mask)
                 step += 1
 
-            probe_x = config.CYLINDER_X
-            probe_y = config.CYLINDER_Y + config.CYLINDER_R + 1
-            cylinder_diameter = config.CYLINDER_R * 2.0
-            
-            local_v = np.sqrt(u[0, probe_y, probe_x]**2 + u[1, probe_y, probe_x]**2)
-            
-            # エオリアンハープのロックイン現象を計算
-            freq, harmonic, raw_fs = calc_aeolian_resonance(local_v, cylinder_diameter, base_freq)
+            freqs = []
+            is_blowing_list = []
+            local_v_list = []
 
-            img_base64 = generate_frame_base64(u, mask)
+            for pipe in config.PIPES:
+                # パイプの開口部の中心座標を計算（左壁の厚さを考慮）
+                probe_x = pipe['x'] + config.THICKNESS + pipe['width'] // 2
+                # 開口部の少し上（外側）の風速を測る
+                probe_y = max(0, config.PIPE_Y_TOP - 2)
+                
+                local_v = np.sqrt(u[0, probe_y, probe_x]**2 + u[1, probe_y, probe_x]**2)
+                if np.isnan(local_v):
+                    local_v = 0.0
+                local_v_list.append(float(local_v))
+                
+                real_length_m = pipe['depth'] * config.DX_REAL
+                freq = calc_pipe_resonance(real_length_m)
+                freqs.append(float(freq))
+                
+                local_v_ms = local_v * config.LBM_TO_MS
+                is_blowing = is_blowing_hard_enough(local_v_ms, threshold=3.0)
+                is_blowing_list.append(bool(is_blowing))
+
+            img_base64 = generate_vector_field_base64(u)
 
             await websocket.send_json({
                 "step": step,
-                "freq": freq,
-                "harmonic": harmonic,
-                "raw_fs": raw_fs,
-                "image": img_base64
+                "pipes": config.PIPES,
+                "freqs": freqs,
+                "is_blowing_list": is_blowing_list,
+                "local_v_list": local_v_list,
+                "u_data": img_base64,
+                "nx": config.NX,
+                "ny": config.NY
             })
             await asyncio.sleep(0.01)
             
