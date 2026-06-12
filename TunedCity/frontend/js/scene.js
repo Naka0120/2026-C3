@@ -62,5 +62,6 @@ function onWindowResize() {
 function animate() {
     requestAnimationFrame(animate);
     controls.update();
+    updateWindParticles();
     renderer.render(scene, camera);
 }
