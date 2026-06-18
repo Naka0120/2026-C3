@@ -76,7 +76,6 @@ function updateWindParticles() {
         x += vx;
         z += vz;
 
-        // X をギャップ内に収める
         const hw = getHalfGap(z);
         if (Math.abs(x) > hw) x = Math.sign(x) * hw;
 
@@ -84,7 +83,6 @@ function updateWindParticles() {
         particlePositions[i * 3 + 1] = y;
         particlePositions[i * 3 + 2] = z;
 
-        // 速度に基づいて色を設定（青→赤）
         const speed = Math.sqrt(vx * vx + vz * vz);
         const t = Math.min(speed / maxSpeed, 1);
         color.setHSL((1 - t) * 0.67, 1.0, 0.5);
