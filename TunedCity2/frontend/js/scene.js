@@ -63,5 +63,6 @@ function animate() {
     requestAnimationFrame(animate);
     controls.update();
     updateWindParticles();
+    updateInstrument();
     renderer.render(scene, camera);
 }
