@@ -181,46 +181,32 @@ class Viewer3D {
             const width = pipe.width;
             const depth = pipe.depth;
             const pipeX = pipe.x;
-
-            const outerRadius = width / 2 + thickness;
-            const innerRadius = width / 2;
             const pipeHeight = depth + thickness;
 
-            const shape = new THREE.Shape();
-            shape.absarc(0, 0, outerRadius, 0, Math.PI * 2, false);
-            const holePath = new THREE.Path();
-            holePath.absarc(0, 0, innerRadius, 0, Math.PI * 2, true);
-            shape.holes.push(holePath);
-
-            const extrudeSettings = {
-                depth: pipeHeight,
-                bevelEnabled: true,
-                bevelSegments: 2,
-                steps: 1,
-                bevelSize: 0.5,
-                bevelThickness: 0.5,
-                curveSegments: 32
-            };
-
-            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-            geometry.rotateX(Math.PI / 2);
-
-            const mesh = new THREE.Mesh(geometry, this.pipeMat);
-
+            // パイプの中心X座標（LBM座標系）
             const centerX = mapX(pipeX + thickness + width / 2);
-            // パイプの口は pipeYTop にあるので、Y座標の開始位置を設定
             const topY = mapY(pipeYTop);
 
-            mesh.position.set(centerX, topY, 0);
+            // 左の壁
+            const leftGeo = new THREE.BoxGeometry(thickness, pipeHeight, 40);
+            const leftWall = new THREE.Mesh(leftGeo, this.pipeMat);
+            leftWall.position.set(mapX(pipeX + thickness / 2), topY - pipeHeight / 2, 0);
+            this.scene.add(leftWall);
+            this.pipeMeshes.push(leftWall);
 
-            const capGeo = new THREE.CylinderGeometry(outerRadius, outerRadius, thickness, 32);
-            const capMesh = new THREE.Mesh(capGeo, this.pipeMat);
-            // ふたの位置は下側（depth分離れたところ）
-            capMesh.position.set(0, -pipeHeight + thickness / 2, 0);
-            mesh.add(capMesh);
+            // 右の壁
+            const rightGeo = new THREE.BoxGeometry(thickness, pipeHeight, 40);
+            const rightWall = new THREE.Mesh(rightGeo, this.pipeMat);
+            rightWall.position.set(mapX(pipeX + thickness * 1.5 + width), topY - pipeHeight / 2, 0);
+            this.scene.add(rightWall);
+            this.pipeMeshes.push(rightWall);
 
-            this.scene.add(mesh);
-            this.pipeMeshes.push(mesh);
+            // 底の壁
+            const bottomGeo = new THREE.BoxGeometry(width + thickness * 2, thickness, 40);
+            const bottomWall = new THREE.Mesh(bottomGeo, this.pipeMat);
+            bottomWall.position.set(centerX, topY - pipeHeight + thickness / 2, 0);
+            this.scene.add(bottomWall);
+            this.pipeMeshes.push(bottomWall);
         });
     }
 

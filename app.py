@@ -11,7 +11,7 @@ import uvicorn
 import config
 from geometry import create_pipe_mask
 from lbm_core import init_simulation, lbm_step
-from acoustics import calc_pipe_resonance, is_blowing_hard_enough
+from acoustics import calc_actual_frequency, calc_volume
 
 # エラーの原因だった「FastAPIアプリケーションの初期化」
 app = FastAPI()
@@ -101,8 +101,13 @@ async def websocket_endpoint(websocket: WebSocket):
             freqs = []
             is_blowing_list = []
             local_v_list = []
+            volumes = []
 
             for pipe in config.PIPES:
+                # Initialize mode if not present
+                if 'mode' not in pipe:
+                    pipe['mode'] = 1
+
                 # パイプの開口部の中心座標を計算（左壁の厚さを考慮）
                 probe_x = pipe['x'] + config.THICKNESS + pipe['width'] // 2
                 # 開口部の少し上（外側）の風速を測る
@@ -114,12 +119,25 @@ async def websocket_endpoint(websocket: WebSocket):
                 local_v_list.append(float(local_v))
                 
                 real_length_m = pipe['depth'] * config.DX_REAL
-                freq = calc_pipe_resonance(real_length_m)
+                width_m = pipe['width'] * config.DX_REAL
+                local_v_ms = local_v * config.LBM_TO_MS
+
+                freq, new_mode, efficiency = calc_actual_frequency(
+                    length_m=real_length_m, 
+                    width_m=width_m, 
+                    local_v_ms=local_v_ms, 
+                    current_mode=pipe['mode']
+                )
+                
+                pipe['mode'] = new_mode
                 freqs.append(float(freq))
                 
-                local_v_ms = local_v * config.LBM_TO_MS
-                is_blowing = is_blowing_hard_enough(local_v_ms, threshold=3.0)
-                is_blowing_list.append(bool(is_blowing))
+                # threshold is roughly 3.0 m/s as before
+                vol = calc_volume(local_v_ms, threshold=3.0, efficiency=efficiency)
+                volumes.append(float(vol))
+                
+                # is_blowing is True if volume is greater than 0
+                is_blowing_list.append(bool(vol > 0.001))
 
             img_base64 = generate_vector_field_base64(u)
 
@@ -129,6 +147,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 "freqs": freqs,
                 "is_blowing_list": is_blowing_list,
                 "local_v_list": local_v_list,
+                "volumes": volumes,
                 "u_data": img_base64,
                 "nx": config.NX,
                 "ny": config.NY

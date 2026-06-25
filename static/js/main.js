@@ -171,14 +171,16 @@ ws.onmessage = (event) => {
         for (let i = 0; i < data.pipes.length; i++) {
             let isBlowing = data.is_blowing_list[i];
             let freq = data.freqs[i];
+            let volume = data.volumes ? data.volumes[i] : 0.0;
 
             if (isBlowing) {
                 blowingCount++;
                 freqStrs.push(freq.toFixed(1));
                 if (isPlaying && oscillators[i]) {
+                    // 周波数がジャンプしたときに滑らかに移行
                     oscillators[i].frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
-                    // 和音の場合、全体のボリュームが大きくなりすぎないように調整
-                    const gainVol = 0.5 / data.pipes.length;
+                    // ダイナミック音量調整（本数で割ってクリップ防止）
+                    const gainVol = (volume * 0.5) / data.pipes.length;
                     gainNodes[i].gain.setTargetAtTime(gainVol, audioCtx.currentTime, 0.1);
                 }
             } else {
