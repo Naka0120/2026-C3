@@ -63,9 +63,9 @@ class Viewer3D {
             size: 15, // 粒を大きくして靄っぽくする
             map: particleTexture,
             vertexColors: true,
-            blending: THREE.AdditiveBlending,
+            blending: THREE.NormalBlending,
             transparent: true,
-            opacity: 0.8,
+            opacity: 0.5,
             depthWrite: false
         });
 
@@ -186,27 +186,29 @@ class Viewer3D {
             // パイプの中心X座標（LBM座標系）
             const centerX = mapX(pipeX + thickness + width / 2);
             const topY = mapY(pipeYTop);
+            
+            // 円柱の半径（壁の厚みを考慮）
+            const outerRadius = (width + thickness * 2) / 2;
+            
+            // THREE.CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, heightSegments, openEnded)
+            // openEnded=true にして中空（パイプ状）にする
+            const cylGeo = new THREE.CylinderGeometry(outerRadius, outerRadius, pipeHeight, 32, 1, true);
+            const cylinder = new THREE.Mesh(cylGeo, this.pipeMat);
+            // CylinderGeometry はデフォルトでY軸方向に伸びるのでそのまま配置
+            cylinder.position.set(centerX, topY - pipeHeight / 2, 0);
+            
+            this.scene.add(cylinder);
+            this.pipeMeshes.push(cylinder);
 
-            // 左の壁
-            const leftGeo = new THREE.BoxGeometry(thickness, pipeHeight, 40);
-            const leftWall = new THREE.Mesh(leftGeo, this.pipeMat);
-            leftWall.position.set(mapX(pipeX + thickness / 2), topY - pipeHeight / 2, 0);
-            this.scene.add(leftWall);
-            this.pipeMeshes.push(leftWall);
-
-            // 右の壁
-            const rightGeo = new THREE.BoxGeometry(thickness, pipeHeight, 40);
-            const rightWall = new THREE.Mesh(rightGeo, this.pipeMat);
-            rightWall.position.set(mapX(pipeX + thickness * 1.5 + width), topY - pipeHeight / 2, 0);
-            this.scene.add(rightWall);
-            this.pipeMeshes.push(rightWall);
-
-            // 底の壁
-            const bottomGeo = new THREE.BoxGeometry(width + thickness * 2, thickness, 40);
-            const bottomWall = new THREE.Mesh(bottomGeo, this.pipeMat);
-            bottomWall.position.set(centerX, topY - pipeHeight + thickness / 2, 0);
-            this.scene.add(bottomWall);
-            this.pipeMeshes.push(bottomWall);
+            // パイプの底のフタ (CircleGeometry)
+            const bottomGeo = new THREE.CircleGeometry(outerRadius, 32);
+            const bottomCap = new THREE.Mesh(bottomGeo, this.pipeMat);
+            bottomCap.rotation.x = Math.PI / 2; // 水平に倒す
+            // 底の位置（Y軸方向の下端）
+            bottomCap.position.set(centerX, topY - pipeHeight, 0);
+            
+            this.scene.add(bottomCap);
+            this.pipeMeshes.push(bottomCap);
         });
     }
 
@@ -276,14 +278,23 @@ class Viewer3D {
                 this.positions[bufIdx + 1] = mapY(p.y);
                 this.positions[bufIdx + 2] = p.z;
 
-                // 色の計算 (風速の絶対値で色付け: 遅い=暗い青, 早い=明るいシアン/白)
+                // 色の計算 (風速の絶対値でヒートマップ色付け: 遅い=青, 中=緑/黄, 早い=赤)
                 const speed = Math.sqrt(ux * ux + uy * uy);
                 const normSpeed = Math.min(speed / 0.1, 1.0);
 
-                // Color gradient (0x020617 to 0x38bdf8 to 0xffffff)
-                let r = 0.0, g = Math.max(0.2, normSpeed), b = Math.max(0.5, normSpeed * 1.2);
-                if (normSpeed > 0.8) {
-                    r = normSpeed; g = normSpeed; b = 1.0;
+                let r, g, b;
+                if (normSpeed < 0.33) {
+                    // 青からシアンへ
+                    let t = normSpeed / 0.33;
+                    r = 0.0; g = t; b = 1.0;
+                } else if (normSpeed < 0.66) {
+                    // シアンから黄色へ
+                    let t = (normSpeed - 0.33) / 0.33;
+                    r = t; g = 1.0; b = 1.0 - t;
+                } else {
+                    // 黄色から赤へ
+                    let t = (normSpeed - 0.66) / 0.34;
+                    r = 1.0; g = 1.0 - t; b = 0.0;
                 }
 
                 // lifeに基づくフェードイン・フェードアウト効果

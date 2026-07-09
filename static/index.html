@@ -25,7 +25,10 @@
         </div>
 
         <div class="panel controls">
-            <button id="audio-btn">PLAY AUDIO</button>
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button id="audio-btn" style="flex: 1;">PLAY AUDIO</button>
+                <button id="perfect-c-btn" style="flex: 1; background: var(--accent); color: white;">Perfect C-Chord</button>
+            </div>
 
             <div class="control-group">
                 <label><span>風速 (m/s)</span> <span id="wind-ms-display">15</span></label>
@@ -33,11 +36,11 @@
             </div>
             <div class="control-group">
                 <label><span>パイプ幅 (W)</span> <span id="width-display">10</span></label>
-                <input type="range" id="width-slider" min="5" max="30" step="1" value="10">
+                <input type="range" id="width-slider" min="5" max="50" step="1" value="10">
             </div>
             <div class="control-group">
                 <label><span>パイプ深さ (L)</span> <span id="depth-display">30</span></label>
-                <input type="range" id="depth-slider" min="10" max="60" step="1" value="30">
+                <input type="range" id="depth-slider" min="10" max="80" step="1" value="30">
             </div>
 
             <div class="control-group">
@@ -57,7 +60,7 @@
     </div>
 
     <!-- JS Modules -->
-    <script src="/static/js/viewer3d.js?v=4"></script>
+    <script src="/static/js/viewer3d.js?v=5"></script>
     <script src="/static/js/main.js?v=4"></script>
 </body>
 

@@ -75,15 +75,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     config.PIPES = []
                     if config.CHORD_MODE:
                         for i, ratio in enumerate(config.CHORD_RATIOS):
-                            pw = max(5, int(config.BASE_PIPE_WIDTH * ratio)) # 太さも連動させる
-                            pd = max(10, int(config.BASE_PIPE_DEPTH * ratio))
+                            pw = max(5, int(round(config.BASE_PIPE_WIDTH * ratio))) 
+                            pd = max(10, int(round(config.BASE_PIPE_DEPTH * ratio)))
                             px = config.BASE_PIPE_X + i * (pw + config.PIPE_SPACING)
-                            config.PIPES.append({'x': px, 'width': pw, 'depth': pd})
+                            config.PIPES.append({
+                                'x': int(px), 
+                                'width': pw, 
+                                'depth': pd,
+                                'exact_width': config.BASE_PIPE_WIDTH * ratio,
+                                'exact_depth': config.BASE_PIPE_DEPTH * ratio
+                            })
                     else:
                         config.PIPES.append({
                             'x': config.BASE_PIPE_X, 
                             'width': config.BASE_PIPE_WIDTH, 
-                            'depth': config.BASE_PIPE_DEPTH
+                            'depth': config.BASE_PIPE_DEPTH,
+                            'exact_width': float(config.BASE_PIPE_WIDTH),
+                            'exact_depth': float(config.BASE_PIPE_DEPTH)
                         })
 
                     mask = create_pipe_mask()
@@ -118,13 +126,16 @@ async def websocket_endpoint(websocket: WebSocket):
                     local_v = 0.0
                 local_v_list.append(float(local_v))
                 
-                real_length_m = pipe['depth'] * config.DX_REAL
-                width_m = pipe['width'] * config.DX_REAL
+                real_length_m = pipe.get('exact_depth', pipe['depth']) * config.DX_REAL
+                width_m = pipe.get('exact_width', pipe['width']) * config.DX_REAL
                 local_v_ms = local_v * config.LBM_TO_MS
 
+                global_v_ms = config.U_IN * config.LBM_TO_MS
+                
                 freq, new_mode, efficiency = calc_actual_frequency(
                     length_m=real_length_m, 
                     width_m=width_m, 
+                    global_v_ms=global_v_ms,
                     local_v_ms=local_v_ms, 
                     current_mode=pipe['mode']
                 )
@@ -132,8 +143,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 pipe['mode'] = new_mode
                 freqs.append(float(freq))
                 
-                # threshold is roughly 3.0 m/s as before
-                vol = calc_volume(local_v_ms, threshold=3.0, efficiency=efficiency)
+                # 下流のパイプが風の影に隠れて鳴らなくなるのを防ぐため、和音演奏時はglobal_v_msをベースに音量計算する
+                # 閾値は少し下げてそよ風でも鳴りやすくする
+                vol = calc_volume(global_v_ms, threshold=2.0, efficiency=efficiency)
                 volumes.append(float(vol))
                 
                 # is_blowing is True if volume is greater than 0

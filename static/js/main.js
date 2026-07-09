@@ -113,6 +113,32 @@ audioBtn.addEventListener('click', () => {
     }
 });
 
+document.getElementById('perfect-c-btn').addEventListener('click', () => {
+    // Set UI sliders
+    document.getElementById('wind-slider').value = 4;
+    document.getElementById('width-slider').value = 100;
+    // 深さ282mmにすると、開口端補正を含めてぴったり261.9Hz(C4)になります
+    document.getElementById('depth-slider').value = 282;
+    
+    // Update displays
+    updateText('wind-ms-display', '4');
+    updateText('width-display', '100');
+    updateText('depth-display', '282');
+    
+    // Set chord mode checkbox
+    const chordToggle = document.getElementById('chord-mode-toggle');
+    if (chordToggle) chordToggle.checked = true;
+    
+    // Send payload
+    ws.send(JSON.stringify({
+        type: 'update',
+        u_in: 4 / LBM_TO_MS,
+        pipe_width: 100,
+        pipe_depth: 282,
+        chord_mode: true
+    }));
+});
+
 // Base64デコード用ユーティリティ
 function base64ToFloat32Array(base64) {
     const binary_string = window.atob(base64);
@@ -180,7 +206,10 @@ ws.onmessage = (event) => {
                     // 周波数がジャンプしたときに滑らかに移行
                     oscillators[i].frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.1);
                     // ダイナミック音量調整（本数で割ってクリップ防止）
-                    const gainVol = (volume * 0.5) / data.pipes.length;
+                    const baseGain = volume * 0.6;
+                    // 全体のゲインが1.0を超えると音が割れる（クリッピング）ので制限する
+                    const maxAllowedGain = 0.9 / data.pipes.length;
+                    const gainVol = Math.min(baseGain, maxAllowedGain);
                     gainNodes[i].gain.setTargetAtTime(gainVol, audioCtx.currentTime, 0.1);
                 }
             } else {

@@ -4,7 +4,7 @@ from numba import njit
 import math
 
 @njit
-def calc_actual_frequency(length_m, width_m, local_v_ms, current_mode, speed_of_sound=340.0):
+def calc_actual_frequency(length_m, width_m, global_v_ms, local_v_ms, current_mode, speed_of_sound=340.0):
     """
     風速、パイプの長さ、幅からエッジトーン周波数を計算し、
     ヒステリシスを考慮して鳴るべき倍音モードとその周波数、および共鳴効率を返す
@@ -12,16 +12,27 @@ def calc_actual_frequency(length_m, width_m, local_v_ms, current_mode, speed_of_
     if length_m <= 0 or width_m <= 0:
         return 0.0, 1, 0.0
 
+    # 開口端補正 (End correction)
+    # 穴の周囲が平坦な面（フランジ付き）の場合、補正量 ΔL は約 0.85 * 半径
+    # 今回は半径 r = width_m / 2 なので、ΔL = 0.85 * (width_m / 2) = 0.425 * width_m
+    delta_L = 0.425 * width_m
+    effective_length = length_m + delta_L
+
     # パイプの共鳴周波数（閉管）
-    f_r1 = speed_of_sound / (4.0 * length_m)      # 基本音 (モード1)
-    f_r3 = 3.0 * speed_of_sound / (4.0 * length_m)  # 第3倍音 (モード3)
+    f_r1 = speed_of_sound / (4.0 * effective_length)      # 基本音 (モード1)
+    f_r3 = 3.0 * speed_of_sound / (4.0 * effective_length)  # 第3倍音 (モード3)
 
     # カルマン渦（エッジトーン）の周波数 (Strouhal number ~ 0.2)
-    # 実際の楽器ではリップからエッジの距離だが、ここでは簡易的に幅の何割かとする
-    b = width_m * 0.8
+    b = width_m  # 風が飛び越える穴の直径（幅）
     if b <= 0:
         b = 0.001
-    f_e = 0.2 * (local_v_ms / b)
+        
+    # 物理スケールとUIのスケールを合わせるためのゲーム的補正係数
+    # 幅10cmの穴でスライダー設定風速(global_v_ms)が13m/sの時にオーバーブロウさせるためには約26倍の補正が必要
+    wind_multiplier = 26.0
+    virtual_v_ms = global_v_ms * wind_multiplier
+
+    f_e = 0.2 * (virtual_v_ms / b)
 
     # ヒステリシス（デッドゾーン）によるモード遷移の判定
     new_mode = current_mode
@@ -51,18 +62,19 @@ def calc_actual_frequency(length_m, width_m, local_v_ms, current_mode, speed_of_
     return f_n, new_mode, efficiency
 
 @njit
-def calc_volume(local_v_ms, threshold=3.0, efficiency=1.0):
+def calc_volume(wind_v_ms, threshold=3.0, efficiency=1.0):
     """
     風速の運動エネルギーと共鳴効率から最終的な音量を計算する
     """
-    if local_v_ms <= threshold:
+    if wind_v_ms <= threshold:
         return 0.0
     
-    # 運動エネルギー由来の基本パワー (v - v_th)^1.5
-    base_power = (local_v_ms - threshold) ** 1.5
+    # 運動エネルギー由来の基本パワー
+    # 人間の聴覚に合わせて対数カーブにし、そよ風(4m/s)でもしっかり聞こえつつ、強風でも爆音になりすぎないようにする
+    base_power = math.log10(1.0 + (wind_v_ms - threshold)) * 3.0
     
-    # スケール調整（最大値が大きくなりすぎないように）
-    k = 0.05
+    # スケール調整
+    k = 0.8
     volume = k * base_power * efficiency
     
     # 音量が大きくなりすぎないようにクリップ（例: 最大1.0）
