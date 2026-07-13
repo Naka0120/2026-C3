@@ -43,6 +43,7 @@
     <script src="js/scene.js"></script>
     <script src="js/buildings.js"></script>
     <script src="js/wind.js"></script>
+    <script src="js/wind_cfd.js"></script>
     <script src="js/instrument.js"></script>
 
     <script>
@@ -51,6 +52,7 @@
             createBuildings();
             initWindParticles();
             initInstrument();
+            loadCFDWindField();  // 非同期 fetch — 完了前はフォールバック動作
             animate();
         };
     </script>
