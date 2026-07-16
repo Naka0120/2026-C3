@@ -58,15 +58,12 @@ class Viewer3D {
         // ソフトパーティクル用のテクスチャ生成
         const particleTexture = this.createParticleTexture();
 
-        // マテリアル設定（加算合成で靄のような光の粒にする）
+        // マテリアル設定（四角い完全なソリッド粒子）
         const streamMat = new THREE.PointsMaterial({
-            size: 15, // 粒を大きくして靄っぽくする
-            map: particleTexture,
+            size: 1.5,
             vertexColors: true,
-            blending: THREE.NormalBlending,
-            transparent: true,
-            opacity: 0.5,
-            depthWrite: false
+            transparent: false, // 不透明度0（＝透明度ゼロ、完全にソリッド）
+            depthWrite: true
         });
 
         this.streamPoints = new THREE.Points(this.streamGeo, streamMat);
@@ -186,17 +183,17 @@ class Viewer3D {
             // パイプの中心X座標（LBM座標系）
             const centerX = mapX(pipeX + thickness + width / 2);
             const topY = mapY(pipeYTop);
-            
+
             // 円柱の半径（壁の厚みを考慮）
             const outerRadius = (width + thickness * 2) / 2;
-            
+
             // THREE.CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, heightSegments, openEnded)
             // openEnded=true にして中空（パイプ状）にする
             const cylGeo = new THREE.CylinderGeometry(outerRadius, outerRadius, pipeHeight, 32, 1, true);
             const cylinder = new THREE.Mesh(cylGeo, this.pipeMat);
             // CylinderGeometry はデフォルトでY軸方向に伸びるのでそのまま配置
             cylinder.position.set(centerX, topY - pipeHeight / 2, 0);
-            
+
             this.scene.add(cylinder);
             this.pipeMeshes.push(cylinder);
 
@@ -206,7 +203,7 @@ class Viewer3D {
             bottomCap.rotation.x = Math.PI / 2; // 水平に倒す
             // 底の位置（Y軸方向の下端）
             bottomCap.position.set(centerX, topY - pipeHeight, 0);
-            
+
             this.scene.add(bottomCap);
             this.pipeMeshes.push(bottomCap);
         });
