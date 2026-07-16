@@ -27,18 +27,19 @@ def calc_actual_frequency(length_m, width_m, global_v_ms, local_v_ms, current_mo
     if b <= 0:
         b = 0.001
         
-    # 物理スケールとUIのスケールを合わせるためのゲーム的補正係数
-    # 幅10cmの穴でスライダー設定風速(global_v_ms)が13m/sの時にオーバーブロウさせるためには約26倍の補正が必要
-    wind_multiplier = 26.0
-    virtual_v_ms = global_v_ms * wind_multiplier
+    # 物理スケールとUIのスケールを合わせるためのデフォルメ補正係数
+    # 現実の管楽器の吹き口は数mmのため、UI上の巨大な幅（100mm等）をそのまま使うと非現実的な風速が必要になる。
+    # そのため、エッジトーン計算時のみ仮想的に幅を約1/32に縮小して計算する
+    width_scale = 1.0 / 32.0
+    virtual_b = b * width_scale
 
-    f_e = 0.2 * (virtual_v_ms / b)
+    f_e = 0.2 * (global_v_ms / virtual_b)
 
     # ヒステリシス（デッドゾーン）によるモード遷移の判定
     new_mode = current_mode
     if current_mode == 1:
         # 基本音から第3倍音へ上がるには、渦周波数が第3倍音にかなり近づく必要がある
-        if f_e > f_r3 * 0.8:
+        if f_e > f_r3 * 0.7:
             new_mode = 3
     else: # current_mode == 3
         # 第3倍音から基本音へ下がるには、渦周波数が基本音にかなり下がる必要がある
