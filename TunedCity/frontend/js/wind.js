@@ -16,11 +16,21 @@ function getHalfGap(z) {
     return WIND_CONFIG.minHalfGap;
 }
 
-function getWindVelocity(x, z) {
+function getWindVelocityContinuity(x, z) {
     const hw = getHalfGap(z);
     const vz = WIND_CONFIG.baseSpeed * WIND_CONFIG.inletHalfGap / hw;
     const vx = z < 80 ? -0.5 * (x / hw) * vz : 0;
     return { vx, vz };
+}
+
+// Dispatches to CFD data (wind_cfd.js) when available, otherwise continuity.
+// instrument.js calls getWindVelocity() — no change needed there.
+function getWindVelocity(x, z) {
+    if (typeof getCFDWindVelocity === 'function') {
+        const v = getCFDWindVelocity(x, z);
+        if (v) return v;
+    }
+    return getWindVelocityContinuity(x, z);
 }
 
 function spawnParticle(i) {
