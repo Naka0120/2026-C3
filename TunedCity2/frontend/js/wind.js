@@ -28,7 +28,11 @@ function getWindVelocityContinuity(x, z) {
 function getWindVelocity(x, z) {
     if (typeof getCFDWindVelocity === 'function') {
         const v = getCFDWindVelocity(x, z);
-        if (v) return v;
+        if (v) {
+            // スライダーの値(baseSpeed)に応じてCFDの静的風速をスケーリングする (基準値: 0.3)
+            const scale = WIND_CONFIG.baseSpeed / 0.3;
+            return { vx: v.vx * scale, vz: v.vz * scale };
+        }
     }
     return getWindVelocityContinuity(x, z);
 }
@@ -69,7 +73,8 @@ function updateWindParticles() {
     if (!windParticles) return;
 
     const count = WIND_CONFIG.particleCount;
-    const maxSpeed = WIND_CONFIG.baseSpeed * WIND_CONFIG.inletHalfGap / WIND_CONFIG.minHalfGap;
+    // 色の変化（青→赤）を絶対的な風速に対応させるため、固定の最大値を設定 (baseSpeed=0.6相当)
+    const maxSpeedForColor = 0.6 * (WIND_CONFIG.inletHalfGap / WIND_CONFIG.minHalfGap);
     const color = new THREE.Color();
 
     for (let i = 0; i < count; i++) {
@@ -94,7 +99,7 @@ function updateWindParticles() {
         particlePositions[i * 3 + 2] = z;
 
         const speed = Math.sqrt(vx * vx + vz * vz);
-        const t = Math.min(speed / maxSpeed, 1);
+        const t = Math.min(speed / maxSpeedForColor, 1);
         color.setHSL((1 - t) * 0.67, 1.0, 0.5);
         particleColors[i * 3 + 0] = color.r;
         particleColors[i * 3 + 1] = color.g;

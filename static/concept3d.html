@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Vertical Pipe Concept</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a1a2e; color: white; font-family: sans-serif; }
+        #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; z-index: 10;}
+        h1 { margin: 0 0 10px 0; font-size: 1.2rem; color: #0ea5e9; }
+        p { margin: 0; font-size: 0.9rem; line-height: 1.5; }
+        .label {
+            color: #fbbf24;
+            font-family: sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 2px 6px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 4px;
+            pointer-events: none;
+            white-space: nowrap;
+            border: 1px solid #fbbf24;
+        }
+        .label.dim {
+            color: #38bdf8;
+            border-color: #38bdf8;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/renderers/CSS2DRenderer.js"></script>
+</head>
+<body>
+    <div id="info">
+        <h1>地面から生える独立パイプ (コンセプトモデル)</h1>
+        <p>下側が地面によって塞がれた「閉管」構造です。<br>
+        上部の開口部（あるいは横の吹き口スリット）に風が当たることで音が鳴ります。<br>
+        物理計算に基づいた大体の寸法（C4ド〜）を記載しています。<br>
+        マウスドラッグで自由に回転してご覧ください。</p>
+    </div>
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 2000);
+        camera.position.set(0, 300, 500);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // CSS2D Renderer for labels
+        const labelRenderer = new THREE.CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 100, 0);
+        controls.update();
+
+        // 照明
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        dirLight.position.set(200, 400, 200);
+        scene.add(dirLight);
+
+        // マテリアル
+        const pipeMat = new THREE.MeshStandardMaterial({ 
+            color: 0xd4d4d8, 
+            roughness: 0.4,
+            metalness: 0.6
+        });
+        const darkMat = new THREE.MeshStandardMaterial({
+            color: 0x111827,
+            roughness: 0.9
+        });
+        const groundMat = new THREE.MeshStandardMaterial({
+            color: 0x475569,
+            roughness: 0.8
+        });
+
+        // 地面
+        const groundGeo = new THREE.PlaneGeometry(600, 400);
+        const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+        groundMesh.rotation.x = -Math.PI / 2;
+        groundMesh.position.y = 0;
+        scene.add(groundMesh);
+
+        // 6本のパイプを構築（高さが異なる閉管）
+        // ド・ミ・ソ・ラ・ド・ミ (261Hz ~ 659Hz)
+        const heights = [320, 250, 210, 180, 150, 120]; 
+        const innerWidth = 26; // 内径 約2.6cm
+        const wallThick = 4;   // 壁厚 4mm
+        const outerWidth = innerWidth + wallThick * 2;
+        
+        const group = new THREE.Group();
+        let offsetX = - (heights.length * (outerWidth + 30)) / 2;
+
+        function createLabel(text, position, className) {
+            const div = document.createElement('div');
+            div.className = className;
+            div.textContent = text;
+            const label = new THREE.CSS2DObject(div);
+            label.position.copy(position);
+            scene.add(label);
+            return label;
+        }
+
+        for(let i = 0; i < heights.length; i++) {
+            const h = heights[i];
+            
+            // パイプ本体のモデリング（中空の四角柱）
+            // 後ろの壁
+            const fbGeo = new THREE.BoxGeometry(outerWidth, h, wallThick);
+            const backMesh = new THREE.Mesh(fbGeo, pipeMat);
+            backMesh.position.set(offsetX + outerWidth/2, h/2, -outerWidth/2 + wallThick/2);
+            group.add(backMesh);
+
+            // 左右の壁
+            const lrGeo = new THREE.BoxGeometry(wallThick, h, innerWidth);
+            const leftMesh = new THREE.Mesh(lrGeo, pipeMat);
+            leftMesh.position.set(offsetX + wallThick/2, h/2, 0);
+            group.add(leftMesh);
+
+            const rightMesh = new THREE.Mesh(lrGeo, pipeMat);
+            rightMesh.position.set(offsetX + outerWidth - wallThick/2, h/2, 0);
+            group.add(rightMesh);
+
+            // 手前の壁（上部に3mm幅のスリットを開けるため、上下2枚の板に分ける）
+            const slitHeight = 3; // 物理的に風切り音を発生させるための3mmの隙間
+            const slitY = h - 20; // 上から20mmの位置にスリットを設ける
+
+            // 手前 下部の壁
+            const frontLowerH = slitY - slitHeight/2;
+            const frontLowerGeo = new THREE.BoxGeometry(outerWidth, frontLowerH, wallThick);
+            const frontLowerMesh = new THREE.Mesh(frontLowerGeo, pipeMat);
+            frontLowerMesh.position.set(offsetX + outerWidth/2, frontLowerH/2, outerWidth/2 - wallThick/2);
+            group.add(frontLowerMesh);
+
+            // 手前 上部の壁
+            const frontUpperH = h - (slitY + slitHeight/2);
+            const frontUpperGeo = new THREE.BoxGeometry(outerWidth, frontUpperH, wallThick);
+            const frontUpperMesh = new THREE.Mesh(frontUpperGeo, pipeMat);
+            frontUpperMesh.position.set(offsetX + outerWidth/2, h - frontUpperH/2, outerWidth/2 - wallThick/2);
+            group.add(frontUpperMesh);
+
+            // 上部のフタ（閉管は下だが、上もフタをしてスリットからのみ風を入れる構造）
+            const capGeo = new THREE.BoxGeometry(outerWidth, wallThick, outerWidth);
+            const capMesh = new THREE.Mesh(capGeo, pipeMat);
+            capMesh.position.set(offsetX + outerWidth/2, h - wallThick/2, 0);
+            group.add(capMesh);
+
+            // 暗い底面（閉管であることを視覚的に）
+            const floorGeo = new THREE.BoxGeometry(innerWidth, 1, innerWidth);
+            const floorMesh = new THREE.Mesh(floorGeo, darkMat);
+            floorMesh.position.set(offsetX + outerWidth/2, 0.5, 0);
+            group.add(floorMesh);
+
+            // ラベルの追加
+            if (i === 0) {
+                createLabel(`高さ: 約${(h/10).toFixed(1)}cm (C4: 261Hz)`, new THREE.Vector3(offsetX + outerWidth/2, h + 20, 0), 'label dim');
+                createLabel(`空洞の太さ: 約3cm\n(ここで音が共鳴・増幅)`, new THREE.Vector3(offsetX + outerWidth/2, h/2, outerWidth/2 + 20), 'label dim');
+                createLabel(`← 吹き口スリット (約3mm)\n(ここで風切り音が発生)`, new THREE.Vector3(offsetX + outerWidth + 40, slitY, outerWidth/2), 'label');
+            } else if (i === heights.length - 1) {
+                createLabel(`高さ: 約${(h/10).toFixed(1)}cm (E5: 659Hz)`, new THREE.Vector3(offsetX + outerWidth/2, h + 20, 0), 'label dim');
+            }
+
+            offsetX += outerWidth + 30; // パイプの間隔
+        }
+
+        scene.add(group);
+
+        // 全体の説明ラベル
+        createLabel("地面（ここにより下部が塞がれ『閉管』になる）", new THREE.Vector3(0, 10, 50), 'label');
+
+        // アニメーションループ
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
