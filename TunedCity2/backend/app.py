@@ -38,11 +38,28 @@ def _get_wind_field() -> dict:
     if WIND_MODEL == "rans_cfd":
         wf_path = _OPENFOAM_CASE / "wind_field.json"
         if wf_path.exists():
-            _wind_field_cache = json.loads(wf_path.read_text())
-            return _wind_field_cache
-        print("[wind] wind_field.json not found, falling back to continuity model")
+            raw = json.loads(wf_path.read_text())
+        else:
+            print("[wind] wind_field.json not found, falling back to continuity model")
+            raw = ContinuityWindSolver().export_grid()
+    else:
+        raw = ContinuityWindSolver().export_grid()
 
-    _wind_field_cache = ContinuityWindSolver().export_grid()
+    # Wind speed scaling: scale ux/uz by (desired / reference) so that
+    # changing inlet_velocity_ms in buildings_tc2.json and restarting the
+    # server changes the effective wind speed without re-running CFD.
+    buildings_data = json.loads(_BUILDINGS_FILE.read_text())
+    desired_ms = buildings_data.get("inlet_velocity_ms", 10.0)
+    reference_ms = raw.get("inlet_velocity_ms", 10.0)
+    if abs(desired_ms - reference_ms) > 1e-6:
+        scale = desired_ms / reference_ms
+        raw = {**raw,
+               "ux": [v * scale for v in raw["ux"]],
+               "uz": [v * scale for v in raw["uz"]],
+               "inlet_velocity_ms": desired_ms}
+        print(f"[wind] scaled {reference_ms} m/s → {desired_ms} m/s (×{scale:.3f})")
+
+    _wind_field_cache = raw
     return _wind_field_cache
 
 

@@ -23,6 +23,10 @@
         }
         #inst-audio-btn.inst-active { background: #c04000; border-color: #ff7733; color: #fff; }
         #instrument-panel label { display: block; margin-top: 8px; font-size: 0.85rem; cursor: pointer; }
+        #inst-organ-readout {
+            margin: 8px 0; font-size: 0.75rem; line-height: 1.5;
+            color: #ccc; white-space: pre; font-family: monospace;
+        }
     </style>
     <!-- Three.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -35,9 +39,11 @@
         <div class="inst-label">パイプオルガン</div>
         <div class="inst-row">風速: <strong><span id="inst-wind-speed">--</span> m/s</strong></div>
         <div class="inst-row">周波数: <strong><span id="inst-freq">---</span> Hz</strong></div>
+        <div id="inst-organ-readout"></div>
         <div id="inst-status" class="inst-status">風切り音のみ</div>
         <button id="inst-audio-btn">PLAY AUDIO</button>
         <label><input type="checkbox" id="inst-chord-toggle"> 和音モード</label>
+        <label><input type="checkbox" id="inst-sub-toggle" checked> サブオルガン (496Hz)</label>
     </div>
 
     <script src="js/scene.js"></script>
